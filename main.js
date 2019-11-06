@@ -14,7 +14,10 @@ const root = new Component({
       <div>
         <ul>
           <li>Hello</li>
-          <li>You</li>
+          <li>
+            You
+            <p>Hloo yoo</p>
+          </li>
         </ul>
       </div>
 

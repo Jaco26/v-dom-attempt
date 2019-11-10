@@ -1,12 +1,14 @@
-import { Component } from './lib2.js'
+import { Component } from './lib.js'
 
 const root = new Component({
+  parent: document.querySelector('#app'),
   template: `
   <div>
+    <h4 class=hihi id=who data-name-id=noom>
+      {{this.name + 8 }} how are you {{this.name + 33}} whooo
+    </h4>
 
-    <h1>Hello {{name}}</h1>
-
-    <p>How are you doing?</p>
+    <p data-hello=jacob>How are you doing?</p>
 
     <input type=text />
 
@@ -33,5 +35,8 @@ const root = new Component({
   }
 })
 
+window.root = root
+root.render()
 
 console.log(root)
+

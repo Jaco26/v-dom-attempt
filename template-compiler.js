@@ -1,7 +1,30 @@
+let expId = 1
+
+export class ExpressionNode {
+  constructor(exprText) {
+    this.exprText = exprText
+    this.domNode = document.createElement('span')
+    this.domNode.dataset.expId = expId
+    expId += 1
+
+    this._evaluator = null
+  }
+
+  evaluate(data) {
+    if (!this._evaluator) {
+      this._evaluator = new Function(`return ${this.exprText}`)
+    }
+    const rv = this._evaluator.call(data)
+    this.domNode.textContent = rv
+    return rv
+  }
+}
+
 function tokenizeTemplate(template) {
   const tagRe = /<\/?[\w\s-"=]*\/?>/
   const tagNameRe = /<\/?[\w-]+/g
-  const tagAttrsRe = /\w+="[\w-\s]+"|\w+=[\w-]+/g
+  const tagAttrsRe = /[\w-]+="[\w-\s]+"|[\w-]+=[\w-]+/g
+ 
 
   const rawNodes = []
 
@@ -22,6 +45,7 @@ function tokenizeTemplate(template) {
     if (node.startsWith('<')) {
       const tagName = node.match(tagNameRe)[0].replace(/<|\//g, '')
       const tagAttrsMatch = node.match(tagAttrsRe) || []
+
       const tagAttrs = tagAttrsMatch.reduce((acc, b) => {
         let [key, val] = b.split('=')
         if (/^".*"?/.test(val)) {
@@ -30,6 +54,7 @@ function tokenizeTemplate(template) {
         acc[key] = val;
         return acc
       }, {})
+
       
       let kind;
 
@@ -42,13 +67,17 @@ function tokenizeTemplate(template) {
       }
 
       return { kind, tagName, tagAttrs }
-    } else {
+
+    } else { // text node
+
       return { kind: 'text', content: node }
     }
   })
 }
 
 function buildVDomTree(tags) {
+  const batCaveRe = /{{.+?}}/g
+
   const stack = []
 
   const makeNode = ({ tagName, tagAttrs }) => ({
@@ -58,7 +87,7 @@ function buildVDomTree(tags) {
   })
 
   for (let i = 0; i < tags.length; i++) {
-    const { kind, tagName, tagAttrs, content } = tags[i]
+    let { kind, tagName, tagAttrs, content } = tags[i]
 
     if (kind === 'opening') {
 
@@ -88,43 +117,34 @@ function buildVDomTree(tags) {
 
     } else if (kind === 'text') {
 
-      stack[stack.length - 1].children.push(content)
+      const batCaveMatches = content.match(batCaveRe)
+      if (batCaveMatches) {
+        const nodeChildren = []
+        batCaveMatches.forEach(bc => {
+          const priorText = content.slice(0, content.indexOf(bc))
+          if (priorText) {
+            nodeChildren.push(priorText)
+          }
+          const expNode = new ExpressionNode(bc.slice(2, -2))
+          nodeChildren.push(expNode)
+          content = content.replace(priorText + bc, '')
+        })
+        if (content) {
+          nodeChildren.push(content)
+        }
+        stack[stack.length - 1].children.push(...nodeChildren)
+      } else {
+        stack[stack.length - 1].children.push(content)
+      }
+
     }
   }
 }
 
-export class Component {
-  constructor({ template, data }) {
-    this.parent = null
-    this.data = this.wrapData(data)
-    this.nodes = this.compileTemplate(template)
 
-  }
 
-  compileTemplate(template) {
-    const flatNodes = tokenizeTemplate(template)
-    const tree = buildVDomTree(flatNodes)
-    return tree
-  }
-
-  wrapData(data) {
-    const accum = {}
-    Object.keys(data).forEach(key => {
-      let internalVal = data[key]
-      Object.defineProperty(accum, key, {
-        get: () => internalVal,
-        set: val => {
-          internalVal = val
-          this.updateTemplate()
-        }
-      })
-    })
-    return accum
-  }
-
-  render() {
-    if (this.parent instanceof HTMLElement) {
-      this.parent.innerHTML = this.template
-    }
-  }
+export default function compileTemplate(template) {
+  const flatNodes = tokenizeTemplate(template)
+  const nodeTree = buildVDomTree(flatNodes)
+  return nodeTree
 }

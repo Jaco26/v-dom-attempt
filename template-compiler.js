@@ -14,9 +14,7 @@ export class ExpressionNode {
     if (!this._evaluator) {
       this._evaluator = new Function(`return ${this.exprText}`)
     }
-    const rv = this._evaluator.call(data)
-    this.domNode.textContent = rv
-    return rv
+    this.domNode.textContent = this._evaluator.call(data)
   }
 }
 
@@ -25,7 +23,6 @@ function tokenizeTemplate(template) {
   const tagNameRe = /<\/?[\w-]+/g
   const tagAttrsRe = /[\w-]+="[\w-\s]+"|[\w-]+=[\w-]+/g
  
-
   const rawNodes = []
 
   while (true) {

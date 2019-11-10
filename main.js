@@ -1,11 +1,15 @@
 import { Component } from './lib.js'
 
-const root = new Component({
+const app = new Component({
   parent: document.querySelector('#app'),
-  template: `
+  template: //html
+  `
   <div>
     <h4 class=hihi id=who data-name-id=noom>
-      {{this.name + 8 }} how are you {{this.name + 33}} whooo
+      {{this.name.toLowerCase() == 'jacob' ? 8 : '' }} 
+      how are you 
+      {{this.name + 33}} 
+      whooo
     </h4>
 
     <p data-hello=jacob>How are you doing?</p>
@@ -35,8 +39,9 @@ const root = new Component({
   }
 })
 
-window.root = root
-root.render()
+window.app = app
 
-console.log(root)
+app.render()
+
+console.log(app)
 

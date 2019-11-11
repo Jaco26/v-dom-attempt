@@ -1,29 +1,12 @@
-// const tagRe = /<\/?[\w\s-"=]*\/?>/g
+import { createElement } from './create-element.js'
+
 const tagRe = /<\/?[\w\s-"'={}\[\]().]*\/?>/g
 const tagNameRe = /<\/?[\w-]+/g
 const tagAttrsRe = /[\w-]+="[\w-\s]+"|[\w-]+=[\w-]+/g
 const tagDirectivesRe = /j-(if|else|for)(={.*})?/g
 const batCaveRe = /{{.+?}}/g
 
-let expId = 1
 
-export class ExpressionNode {
-  constructor(exprText) {
-    this.exprText = exprText
-    this.domNode = document.createElement('span')
-    this.domNode.dataset.expId = expId
-    expId += 1
-
-    this._evaluator = null
-  }
-
-  evaluate(data) {
-    if (!this._evaluator) {
-      this._evaluator = new Function(`return ${this.exprText}`)
-    }
-    this.domNode.textContent = this._evaluator.call(data)
-  }
-}
 
 function parseRawTextNode(text) {
   text = text.trim()
@@ -55,7 +38,6 @@ function parseRawTagNode(tag) {
     attrs: null
   }
 
-  // parse raw tag name, attrs and directives
   if (tag.startsWith('</')) {
     rv.kind = 'closing'
   } else if (tag.endsWith('/>')) {
@@ -65,29 +47,23 @@ function parseRawTagNode(tag) {
   }
 
   if (rv.kind === 'opening' || rv.kind === 'selfClosing') {
-    const directivesMatch = tag.match(tagDirectivesRe)
-    if (directivesMatch) {
-      rv.directives = directivesMatch.reduce((acc, directive) => {
-        let [key, val] = directive.split('=')
-        if (val) {
-          val = val.slice(1, -1)
-        }
-        acc[key] = val || ''
-        return acc
-      }, {})
-    }
-    
-    const attrsMatch = tag.match(tagAttrsRe)
-    if (attrsMatch) {
-      rv.attrs = attrsMatch.reduce((acc, attr) => {
-        let [key, val] = attr.split('=')
-        if (/^".*"$/.test(val)) {
-          val = val.slice(1, -1)
-        }
-        acc[key] = val
-        return acc
-      }, {})
-    }
+    rv.directives = (tag.match(tagDirectivesRe) || []).reduce((acc, directive) => {
+      let [key, val] = directive.split('=')
+      if (val) {
+        val = val.slice(1, -1)
+      }
+      acc[key.slice(2)] = val || ''
+      return acc
+    }, {})
+
+    rv.attrs = (tag.match(tagAttrsRe) || []).reduce((acc, attr) => {
+      let [key, val] = attr.split('=')
+      if (/^".*"$/.test(val)) {
+        val = val.slice(1, -1)
+      }
+      acc[key] = val
+      return acc
+    }, {})
   }
 
   return rv
@@ -113,77 +89,110 @@ function tokenizeTemplate(template) {
   }, [])
 }
 
-function buildNodeTree(tags) {
-  const batCaveRe = /{{.+?}}/g
 
-  const stack = []
+function buildNodeTree(nodes) {
 
-  const makeNode = ({ tagName, tagAttrs }) => ({
-    tagName,
-    tagAttrs, 
+  const extendNode = node => ({
+    tagName: node.tagName,
+    attrs: node.attrs,
+    directives: node.directives,
     children: [],
   })
 
-  for (let i = 0; i < tags.length; i++) {
-    let { kind, tagName, tagAttrs, content } = tags[i]
+  const stack = []
 
-    if (kind === 'opening') {
+  for (let i = 0; i < nodes.length; i++) {
+    let node = nodes[i]
 
-      const node = makeNode({ tagName, tagAttrs })
-
-      stack.push(node)
-
-    } else if (kind === 'closing') {
-
-      const item = stack.pop()
-
+    if (node.kind === 'text') {
+      stack[stack.length - 1].children.push(...node.content)
+    } else if (node.kind === 'opening') {
+      stack.push(extendNode(node))
+    } else if (node.kind === 'selfClosing') {
+      stack[stack.length - 1].children.push(extendNode(node))
+    } else if (node.kind === 'closing') {
+      const itemsWhichThisNodeEncloses = stack.pop()
       if (stack.length) {
-
-        stack[stack.length - 1].children.push(item)
-
+        stack[stack.length - 1].children.push(itemsWhichThisNodeEncloses)
       } else {
-
-        return item // BASE CASE
-
+        return { root: itemsWhichThisNodeEncloses }
       }
-
-    } else if (kind === 'selfClosing') {
-
-      const node = makeNode({ tagName, tagAttrs })
-
-      stack[stack.length - 1].children.push(node)
-
-    } else if (kind === 'text') {
-
-      const batCaveMatches = content.match(batCaveRe)
-      if (batCaveMatches) {
-        const nodeChildren = []
-        batCaveMatches.forEach(bc => {
-          const priorText = content.slice(0, content.indexOf(bc))
-          if (priorText) {
-            nodeChildren.push(priorText)
-          }
-          const expNode = new ExpressionNode(bc.slice(2, -2))
-          nodeChildren.push(expNode)
-          content = content.replace(priorText + bc, '')
-        })
-        if (content) {
-          nodeChildren.push(content)
-        }
-        stack[stack.length - 1].children.push(...nodeChildren)
-      } else {
-        stack[stack.length - 1].children.push(content)
-      }
-
     }
   }
 }
 
 
+function parseElementNodeDirectives(directives) {
+  const rules = {
+    if: exprText => data => {
+      const fn = new Function(`return ${exprText}`)
+      return fn.call(data)
+    },
+  }
+  return Object.keys(directives).reduce((accum, key) => {
+    if (rules[key]) {
+      accum[key] = rules[key](directives[key])
+    }
+    return accum
+  }, {})
+}
+
+export class ElementNode {
+  constructor(node) {
+    this.domNode = createElement(node.tagName, node.attrs)
+    this.directives = parseElementNodeDirectives(node.directives)
+    this.children = []
+  }
+}
+
+
+let expId = 1
+
+export class ExpressionNode {
+  constructor(exprText) {
+    this.exprText = exprText
+    this.domNode = document.createElement('span')
+    this.domNode.dataset.expId = expId
+    expId += 1
+
+    this._evaluator = null
+  }
+
+  evaluate(data) {
+    if (!this._evaluator) {
+      this._evaluator = new Function(`return ${this.exprText}`)
+    }
+    this.domNode.textContent = this._evaluator.call(data)
+  }
+}
+
+
+export class TextNode {
+  constructor(value) {
+    this.value = value
+  }
+}
+
+
+function createVirtualDOM(node) {
+  if (node.tagName) {
+    const rv = new ElementNode(node)
+    node.children.forEach(child => {
+      rv.children.push(createVirtualDOM(child))
+    })
+    return rv
+  } else if (typeof node === 'string') {
+    return new TextNode(node)
+  } else if (Array.isArray(node)) {
+    return new ExpressionNode(node[0])
+  }
+}
+
 
 export default function compileTemplate(template) {
-  console.log(template)
   const flatNodes = tokenizeTemplate(template)
-  console.log(flatNodes)
-  return buildNodeTree(flatNodes)
+  const nodeTree = buildNodeTree(flatNodes)
+  const vDom = createVirtualDOM(nodeTree.root)
+  // console.log(vDom)
+  return { root: vDom }
 }

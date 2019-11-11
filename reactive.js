@@ -34,6 +34,7 @@ export function wrapData(data) {
 
 export function watcher(cb) {
   target = cb
-  target()
+  const rv = target()
   target = null
+  return rv
 }

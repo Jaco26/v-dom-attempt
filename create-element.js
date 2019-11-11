@@ -1,9 +1,9 @@
 
-export function  createElement(node) {
-  const rv = document.createElement(node.tagName)
+export function createElement(tagName, attrs) {
+  const rv = document.createElement(tagName)
 
-  if (node.tagAttrs) {
-    Object.entries(node.tagAttrs).forEach(([key, val]) => {
+  if (attrs) {
+    Object.entries(attrs).forEach(([key, val]) => {
       if (key.startsWith('data')) {
         let dataKey = key.slice(5)
           .split('-')

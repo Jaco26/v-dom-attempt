@@ -12,7 +12,7 @@ const jifTemplate = //html
 
 const simpleTemplate = //html
 `<div>
-  <h3>Hello</h3> hi
+  <h3>Hello</h3> hi {{this.name}}
   <div>
     The name equals {{this.name}}
   </div>
@@ -20,7 +20,7 @@ const simpleTemplate = //html
 
 const app = new Component({
   parent: document.querySelector('#app'),
-  template: 1 ? jifTemplate : simpleTemplate,
+  template: 0 ? jifTemplate : simpleTemplate,
   data: {
     name: 'Jacob'
   }

@@ -15,7 +15,6 @@ export function  createElement(node) {
       } else {
         rv.setAttribute(key, val)
       }
-      
     })
   }
   

@@ -12,7 +12,7 @@ export class Component {
   render() {
     if (this.parent) {
 
-      const innerRender = node => {
+      const recursiveRender = node => {
         const el = createElement(node)
         if (node.children) {
           node.children.forEach(childNode => {
@@ -22,14 +22,14 @@ export class Component {
               watcher(() => childNode.evaluate(this.data))
               el.appendChild(childNode.domNode)
             } else {
-              el.appendChild(innerRender(childNode))
+              el.appendChild(recursiveRender(childNode))
             }
           })
         }
         return el
       }
       this.parent.innerHTML = ''
-      this.parent.appendChild(innerRender(this.nodes.root))
+      this.parent.appendChild(recursiveRender(this.nodes))
     }
   }
 }

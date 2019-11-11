@@ -1,3 +1,10 @@
+// const tagRe = /<\/?[\w\s-"=]*\/?>/g
+const tagRe = /<\/?[\w\s-"'={}\[\]().]*\/?>/g
+const tagNameRe = /<\/?[\w-]+/g
+const tagAttrsRe = /[\w-]+="[\w-\s]+"|[\w-]+=[\w-]+/g
+const tagDirectivesRe = /j-(if|else|for)(={.*})?/g
+const batCaveRe = /{{.+?}}/g
+
 let expId = 1
 
 export class ExpressionNode {
@@ -18,61 +25,95 @@ export class ExpressionNode {
   }
 }
 
-function tokenizeTemplate(template) {
-  const tagRe = /<\/?[\w\s-"=]*\/?>/
-  const tagNameRe = /<\/?[\w-]+/g
-  const tagAttrsRe = /[\w-]+="[\w-\s]+"|[\w-]+=[\w-]+/g
- 
-  const rawNodes = []
+function parseRawTextNode(text) {
+  text = text.trim()
 
-  while (true) {
-    const match = template.match(tagRe)
-    if (match) {
-      const tag = match[0]
-      template = template.replace(tag, '')
-      const text = template.slice(match.index, template.indexOf('<')).trim()
-      rawNodes.push(tag)
-      if (!!text) rawNodes.push(text)
-    } else {
-      break
+  const rv = { kind: 'text', content: [] }
+  
+  const batCaves = text.match(batCaveRe)
+  if (batCaves) {
+    batCaves.forEach(bc => {
+      const priorTxt = text.slice(0, text.indexOf(bc))
+      if (priorTxt) {
+        rv.content.push(priorTxt)
+      }
+      rv.content.push([bc.slice(2, -2)])
+      text = text.replace(priorTxt + bc, '')
+    })
+  } else {
+    rv.content.push(text)
+  }
+
+  return rv
+}
+
+function parseRawTagNode(tag) {
+  const rv = { 
+    tagName: tag.match(tagNameRe)[0].replace(/<|\//g, ''),
+    kind: '',
+    directives: null,
+    attrs: null
+  }
+
+  // parse raw tag name, attrs and directives
+  if (tag.startsWith('</')) {
+    rv.kind = 'closing'
+  } else if (tag.endsWith('/>')) {
+    rv.kind = 'selfClosing'
+  } else {
+    rv.kind = 'opening'
+  }
+
+  if (rv.kind === 'opening' || rv.kind === 'selfClosing') {
+    const directivesMatch = tag.match(tagDirectivesRe)
+    if (directivesMatch) {
+      rv.directives = directivesMatch.reduce((acc, directive) => {
+        let [key, val] = directive.split('=')
+        if (val) {
+          val = val.slice(1, -1)
+        }
+        acc[key] = val || ''
+        return acc
+      }, {})
+    }
+    
+    const attrsMatch = tag.match(tagAttrsRe)
+    if (attrsMatch) {
+      rv.attrs = attrsMatch.reduce((acc, attr) => {
+        let [key, val] = attr.split('=')
+        if (/^".*"$/.test(val)) {
+          val = val.slice(1, -1)
+        }
+        acc[key] = val
+        return acc
+      }, {})
     }
   }
 
-  return rawNodes.map(node => {
-    if (node.startsWith('<')) {
-      const tagName = node.match(tagNameRe)[0].replace(/<|\//g, '')
-      const tagAttrsMatch = node.match(tagAttrsRe) || []
-
-      const tagAttrs = tagAttrsMatch.reduce((acc, b) => {
-        let [key, val] = b.split('=')
-        if (/^".*"?/.test(val)) {
-          val = val.slice(1, -1)
-        }
-        acc[key] = val;
-        return acc
-      }, {})
-
-      
-      let kind;
-
-      if (node.startsWith('</')) {
-        kind = 'closing'
-      } else if (node.endsWith('/>')) {
-        kind = 'selfClosing'
-      } else {
-        kind = 'opening'
-      }
-
-      return { kind, tagName, tagAttrs }
-
-    } else { // text node
-
-      return { kind: 'text', content: node }
-    }
-  })
+  return rv
 }
 
-function buildVDomTree(tags) {
+
+function tokenizeTemplate(template) {
+  return template.match(tagRe).reduce((accum, tag) => {
+
+    let text = template.slice(0, template.indexOf(tag))
+    
+    if (text.trim()) {
+      const textNode = parseRawTextNode(text)
+      accum.push(textNode)
+    }
+
+    const tagNode = parseRawTagNode(tag)
+    accum.push(tagNode)
+
+    template = template.replace(text + tag, '')
+
+    return accum
+  }, [])
+}
+
+function buildNodeTree(tags) {
   const batCaveRe = /{{.+?}}/g
 
   const stack = []
@@ -102,7 +143,7 @@ function buildVDomTree(tags) {
 
       } else {
 
-        return { root: item }
+        return item // BASE CASE
 
       }
 
@@ -141,7 +182,8 @@ function buildVDomTree(tags) {
 
 
 export default function compileTemplate(template) {
+  console.log(template)
   const flatNodes = tokenizeTemplate(template)
-  const nodeTree = buildVDomTree(flatNodes)
-  return nodeTree
+  console.log(flatNodes)
+  return buildNodeTree(flatNodes)
 }
